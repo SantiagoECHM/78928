@@ -1,11 +1,12 @@
 
 #define DHTpin 15
-DHTesp dht;
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
 #include <Arduino.h>
 #ifdef ESP32
 #include <WiFi.h>
 #include <AsyncTCP.h>
-#elif defined(ESP8266)
+#elif defined(ESP32)
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #endif
