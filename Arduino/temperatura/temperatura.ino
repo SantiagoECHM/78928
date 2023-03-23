@@ -1,131 +1,136 @@
-
-#define DHTpin 15
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-#include <Arduino.h>
-#ifdef ESP32
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#elif defined(ESP32)
-#include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
-#endif
+#include <WebServer.h>
+#include <Arduino.h>
 #include <ESPAsyncWebSrv.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include "DHTesp.h"
+DHT dht(15, DHT11);
 
 const char* ssid = "Alpha";
 const char* password = "caracoles123";
-AsyncWebServer server (80);
 
-  float humedad =  dht.getHumidity();
+AsyncWebServer server(80);
 
-  float temperatura = dht.getTemperature();                            
+String webpage = "<!DOCTYPE html><html><head><title>Page Title</title></head><body style='background-color: #EEEEEE;'><span style='color: #003366;'><h1>This is a Heading</h1><p>This is a paragraph.</p></span></body></html>";
 
 void setup(){
   Serial.begin(115200);
-  Serial.println();
   conectarse();
-  Serial.println("Estado\tHumedad (%)\tTemperatura (C)\t(F)\tIndiceCalor (C)\t(F)");
-  dht.setup(DHTpin, DHTesp::DHT11); //El pin que va a utilizar para los datos
-  server.on("/", HTTP_GET,[](AsyncWebServerRequest *request){
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     int numParametros = request->params();
     Serial.print(numParametros);
-    if(numParametros == 0){
-      request -> send (200, "text/html", "<h1>Bienvenido al DHT11</h1>");
+    Serial.println("Estado\tHumedad (%)\tTemperatura (C)\t(F)\tIndiceCalor (C)\t(F)");
+    if(numParametros==0){
+      request->send(200,"text/html", webpage);
+    } else{
+      AsyncWebParameter *p = request->getParam(0);
+      String html="<H1>hola" + p->value()+" desde ESP32</H1>";
+      request->send(200, "text/html", html);            
     }
   });
-  server.on("/hum", HTTP_GET,[](AsyncWebServerRequest *r){
-    String humedadWeb = "<h1> La humedad es:</h1>"+getHumedad()+"";
-    r->send(200, "text/html", humedadWeb);
+  server.on("/temperatura", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html1 = "<h1>La temperatura actual es: </h1>"+getTemperatura();
+    request->send(200,"text/html", html1);    
   });
-  server.on("/tempc", HTTP_GET,[](AsyncWebServerRequest *r){
-    String tempWebc = "<h1> La temperatura (Centigrados) es:</h1>"+getTempC()+"";
-    r->send(200, "text/html", tempWebc);
+
+  server.on("/humedad", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html2 = "<h1>La húmedad actual es: </h1>"+getHumedad();
+    request->send(200,"text/html", html2);    
   });
-  server.on("/tempf", HTTP_GET,[](AsyncWebServerRequest *r){
-    String tempwebf = "<h1> La temperatura (Fahrenheit) es: </h1>"+getTempF()+"";
-    r->send(200, "text/html", tempwebf);
+
+  server.on("/fharenheit", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html3 = "<h1>La temperatura en grados fharenhit actual es: </h1>"+getFharenheit();
+    request->send(200,"text/html", html3);    
   });
-  server.on("/calorc", HTTP_GET,[](AsyncWebServerRequest *r){
-    String calorc = "<h1> El calor (Centigrados) actual es:</h1>"+getCalorC()+"";
-    r->send(200, "text/html", calorc);
+
+  server.on("/calorc", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html4 = "<h1>Calor en grados celcius actual es: </h1>"+getCalorc();
+    request->send(200,"text/html", html4);    
   });
-  server.on("/calorf", HTTP_GET,[](AsyncWebServerRequest *r){
-    String calorf = "<h1> El calor (Fahrenheit) actual es:</h1>"+getCalorF()+"";
-    r->send(200, "text/html", calorf);
+
+  server.on("/calorf", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html5 = "<h1>Calor en grados farenhit actual es: </h1>"+getCalorf();
+    request->send(200,"text/html", html5);    
   });
+
   server.begin();
 }
 
 void loop(){
-  delay(dht.getMinimumSamplingPeriod()); //Establece el minimo periodo de sampleo
-  float humedad =  dht.getHumidity();
-  float temperatura = dht.getTemperature();
-  if (isnan(humedad) || isnan(temperatura)){ //Si no es un numero
-    Serial.println("No se pudo leer sensor DHT!");
+  float humedad =  dht.readHumidity();
+  float temp = dht.readTemperature();    
+  float f = dht.readTemperature(true);   
+
+  if (isnan(humedad) || isnan(temp) || isnan(f)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
     return;
   }
-  //Imprimir los valores
-  Serial.print( dht.getStatusString() );
+
+  float hif = dht.computeHeatIndex(f, humedad);     
+  float hic = dht.computeHeatIndex(temp, humedad, false);                      
   Serial.print("\t");
-  Serial.print(humedad, 1);
+  Serial.print(humedad);
   Serial.print("\t\t");
-  Serial.print(temperatura, 1);
+  Serial.print(temp);
   Serial.print("\t\t");
-  Serial.print( dht.toFahrenheit(temperatura), 1);
+  Serial.print(f);
   Serial.print("\t\t");
-  Serial.print( dht.computeHeatIndex(temperatura, humedad, false), 1);
+  Serial.print(hic);
   Serial.print("\t\t");
-  Serial.println(dht.computeHeatIndex(dht.toFahrenheit(temperatura), humedad, true), 1);
+  Serial.println(hif);
   delay(2000);
 }
-void conectarse(){
-  Serial.print("conectando");
-    Serial.println(ssid);
-    WiFi.begin(ssid,password);
 
-    while(WiFi.status() != WL_CONNECTED){
-      delay(500);
-      Serial.print(".");
-    }
+void conectarse(){
+  WiFi.begin(ssid, password);
+  Serial.println("Estableciendo conexión con SSID "+String(ssid));  
+
+  while(WiFi.status() != WL_CONNECTED){
+    delay(1000);
+    Serial.println(".");
+  }  
+  Serial.print("Conectado a la red con dirección ip: ");
+  Serial.print(WiFi.localIP());
+}
 
 String getHumedad(){
-  float humedad =  dht.getHumidity();
-  String valor= "";
-  valor.concat(humedad);
-  return valor;
+  float humedad = dht.readHumidity();
+  String hum ="";
+  hum.concat(humedad);
+  return hum;
 }
 
-String getTempC(){
-  float temperatura = dht.getTemperature();
-  String tempc= "";
-  tempc.concat(temperatura);
-  return tempc;
+String getTemperatura(){
+  float temp = dht.readTemperature();
+  String tem = "";
+  tem.concat(temp);
+  return tem;  
 }
 
-String getTempF(){
-  float temperatura = dht.toFahrenheit(temperatura);
-  String tempf = "";
-  tempf.concat(temperatura);
-  return tempf;
+String getFharenheit(){
+  float f = dht.readTemperature(true);
+  String f1 = "";
+  f1.concat(f);
+  return f1;
 }
 
-String getCalorC(){
-  float humedad =  dht.getHumidity();
-  float temperatura = dht.getTemperature();
-  float calor =  dht.computeHeatIndex(temperatura, humedad, false);
-  String valor= "";
-  valor.concat(calor);
-  return valor;
+String getCalorc(){
+  float temp = dht.readTemperature();
+  float humedad = dht.readHumidity();
+  float hic = dht.computeHeatIndex(temp, humedad, false);
+  String calorc="";
+  calorc.concat(hic);
+  return calorc;
 }
 
-String getCalorF(){
-  float humedad =  dht.getHumidity();
-  float temperatura = dht.getTemperature();
-  float calor =  dht.computeHeatIndex(dht.toFahrenheit(temperatura), humedad, true);
-  String valor= "";
-  valor.concat(calor);
-  return valor;
+String getCalorf(){
+  float humedad = dht.readHumidity();
+  float f = dht.readTemperature(true);
+  float hif = dht.computeHeatIndex(f, humedad);
+  String calorf = "";
+  calorf.concat(calorf);  
+  return calorf;  
 }
 
-    Serial.print(WiFi.localIP());
-}
